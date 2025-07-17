@@ -27,6 +27,40 @@
   (none)
   )
 
+(defbehavior want-to-jak? target ()
+    (and (or (cpad-pressed? (-> self control cpad number) l2) (>= 0 (-> self game eco-pill-dark)))
+         (not *pause-lock*)
+         (-> *setting-control* user-current darkjak)
+         (not (focus-test?
+                self
+                dead
+                hit
+                grabbed
+                in-head
+                under-water
+                edge-grab
+                pole
+                flut
+                tube
+                board
+                pilot
+                mech
+                carry
+                indax
+                teleporting
+                )
+                )
+         (not (and (logtest? (-> self water flags) (water-flags under-water))
+                     (not (logtest? (-> self water flags) (water-flags swim-ground)))
+                     )
+         )
+         (and (focus-test? self dark)
+              (nonzero? (-> self darkjak))
+              (logtest? (-> self darkjak stage) (darkjak-stage active))
+              )
+         )
+    )
+
 (defbehavior want-to-darkjak? target ()
   (and (cpad-pressed? (-> self control cpad number) l2)
        (not *pause-lock*)
@@ -57,7 +91,7 @@
             )
        (or (and (not (and (focus-test? self dark) (nonzero? (-> self darkjak))))
                 (and (time-elapsed? (-> (the-as fact-info-target (-> self fact)) darkjak-start-time) (seconds 0.05))
-                     (>= (-> self game eco-pill-dark) (-> *FACT-bank* eco-pill-dark-max-default))
+                     (>= (-> self game eco-pill-dark) 1)
                      )
                 )
            (and (and (focus-test? self dark) (nonzero? (-> self darkjak)))
@@ -91,9 +125,6 @@
     (remove-setting! 'string-spline-max-move-player)
     (remove-setting! 'string-spline-accel-player)
     (sound-stop (-> self darkjak tone))
-    ;; og:preserve-this trigger effects
-    (when (pc-get-trigger-effects-enabled?)
-      (pc-clear-trigger-effect! (pc-trigger-effect-option left)))
     )
   0
   (none)
@@ -115,12 +146,8 @@
        )
      (target-danger-set! (-> self control danger-mode) #f)
      (update-transforms (-> self control))
-     (if (and (or (time-elapsed?
-                    (-> (the-as fact-info-target (-> self fact)) darkjak-start-time)
-                    (-> (the-as fact-info-target (-> self fact)) darkjak-effect-time)
-                    )
-                  (not (-> *setting-control* user-current darkjak))
-                  )
+     ; custom section
+     (if (and (not (-> *setting-control* user-current darkjak)) 
               (not (focus-test? self dead dangerous hit grabbed))
               (not (and (-> self next-state) (= (-> self next-state name) 'target-darkjak-get-off)))
               (not (logtest? (-> self darkjak stage) (darkjak-stage force-on)))
@@ -128,6 +155,7 @@
          (go target-darkjak-get-off)
          )
      )
+     ; end of custom section
     (else
       (seek! (-> self darkjak-interp) 0.0 (* 2.0 (seconds-per-frame)))
       (if (= (-> self darkjak-interp) 0.0)
@@ -280,18 +308,9 @@
     (remove-setting! 'bg-b)
     (remove-setting! 'bg-a)
     (persist-with-delay *setting-control* 'bg-a-speed (seconds 3) 'bg-a-speed 'abs 0.5 0)
-    (if (not (and (-> self next-state) (= (-> self next-state name) 'target-darkjak-get-off)))
-        (pickup-collectable!
-          (-> self fact)
-          (pickup-type eco-pill-dark)
-          (- (-> *FACT-bank* eco-pill-dark-max-default))
-          (the-as handle #f)
-          )
-        )
+    ; custom removal of condition
     )
   :code (behavior ((arg0 darkjak-stage))
-    (when (pc-get-trigger-effects-enabled?)
-      (pc-send-trigger-rumble! 32767 0 100))
     (send-event (handle->process (-> self notify)) 'notify 'attack 15)
     (if (and (focus-test? self dark) (nonzero? (-> self darkjak)))
         (go target-darkjak-giant)
@@ -591,6 +610,9 @@
     )
   :trans (-> target-running-attack trans)
   :code (behavior ()
+    ; Custom code for decrement
+    (send-event self 'get-pickup (pickup-type eco-pill-dark) -4.0)
+    ; End of custom code
     (local-vars
       (sv-16 float)
       (sv-20 float)
@@ -1499,10 +1521,10 @@
               (set! (-> sv-176 y) (rand-vu-float-range -8192.0 8192.0))
               (set! (-> sv-176 z) (rand-vu-float-range -40960.0 40960.0))
               (set! (-> sv-176 w) 1.0)
-              (.mov.vf.w vf6 vf0)
+              (.mov.vf vf6 vf0 :mask #b1000)
               (.lvf vf4 (&-> sv-160 quad))
               (.lvf vf5 (&-> sv-176 quad))
-              (.add.vf.xyz vf6 vf4 vf5)
+              (.add.vf vf6 vf4 vf5 :mask #b111)
               (.svf (&-> sv-192 quad) vf6)
               ((the-as (function object object object object object object object object none) s5-1)
                s4-1
